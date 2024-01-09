@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/securecookie"
 	"github.com/labstack/echo/v4"
+	"github.com/perses/perses/internal/api/interface/v1/user"
 	"github.com/perses/perses/internal/api/shared"
 	"github.com/perses/perses/internal/api/shared/crypto"
 	"github.com/perses/perses/internal/api/shared/route"
@@ -86,7 +87,7 @@ type oAuthEndpoint struct {
 	loginProps      []string
 }
 
-func newOAuthEndpoint(params config.OAuthProvider, jwt crypto.JWT) route.Endpoint {
+func newOAuthEndpoint(params config.OAuthProvider, jwt crypto.JWT, dao user.DAO) route.Endpoint {
 	// URLS are validated as non nil from the config (see config.OauthProvider.Verify)
 	authURL := *params.AuthURL.URL
 	tokenURL := params.TokenURL.String()
@@ -121,7 +122,7 @@ func newOAuthEndpoint(params config.OAuthProvider, jwt crypto.JWT) route.Endpoin
 		slugID:          params.SlugID,
 		userInfoURL:     userInfosURL,
 		authURL:         authURL,
-		svc:             service{},
+		svc:             service{dao: dao},
 		loginProps:      loginProps,
 	}
 }
@@ -273,13 +274,13 @@ func (e *oAuthEndpoint) codeExchangeHandler(ctx echo.Context) error {
 	}
 
 	// Save the user in database
-	user, err := e.svc.SyncUser(uInfo)
+	entity, err := e.svc.SyncUser(uInfo)
 	if err != nil {
 		e.logWithError(err).Error("Failed to sync user in database.")
 		return shared.InternalError
 	}
 
-	username := user.GetMetadata().GetName()
+	username := entity.GetMetadata().GetName()
 	_, err = e.tokenManagement.accessToken(username, ctx.SetCookie)
 	if err != nil {
 		e.logWithError(err).Error("Failed to generate and save access token.")

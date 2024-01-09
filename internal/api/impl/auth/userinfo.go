@@ -16,6 +16,8 @@ package auth
 import (
 	"strings"
 
+	"github.com/perses/perses/internal/api/interface/v1/user"
+	databaseModel "github.com/perses/perses/internal/api/shared/database/model"
 	v1 "github.com/perses/perses/pkg/model/api/v1"
 )
 
@@ -47,18 +49,55 @@ func buildLoginFromEmail(email string) string {
 }
 
 type service struct {
+	dao user.DAO
 }
 
-func (s *service) SyncUser(uInfo externalUserInfo) (v1.User, error) {
-	//TODO(cegarcia): to be implemented
-	return v1.User{
-		Kind: v1.KindUser,
-		Metadata: v1.Metadata{
-			Name: uInfo.GetLogin(),
-		},
-		Spec: v1.UserSpec{
-			FirstName: uInfo.GetProfile().GivenName,
-			LastName:  uInfo.GetProfile().FamilyName,
-		},
-	}, nil
+func arbitrate(old, new string) string {
+	if len(new) > 0 {
+		return new
+	}
+	return old
+}
+
+func saveProfileInfo(specs v1.UserSpec, uInfoProfile externalUserInfoProfile) v1.UserSpec {
+	specs.FirstName = arbitrate(specs.FirstName, uInfoProfile.GivenName)
+	specs.LastName = arbitrate(specs.LastName, uInfoProfile.FamilyName)
+	return specs
+}
+
+func (s *service) getOrPrepareUserEntity(login string) (*v1.User, bool, error) {
+	result, err := s.dao.Get(login)
+	if err != nil {
+		if databaseModel.IsKeyNotFound(err) {
+			result = &v1.User{Kind: v1.KindUser, Metadata: v1.Metadata{Name: login}}
+			return result, true, nil
+		}
+		return nil, false, err
+	}
+	return result, false, nil
+}
+
+func (s *service) SyncUser(uInfo externalUserInfo) (*v1.User, error) {
+	entity, isNew, err := s.getOrPrepareUserEntity(uInfo.GetLogin())
+	if err != nil {
+		return nil, err
+	}
+
+	entity.Spec = saveProfileInfo(entity.Spec, uInfo.GetProfile())
+
+	if isNew {
+		entity.Metadata.CreateNow()
+		err = s.dao.Create(entity)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	entity.Metadata.Update(entity.Metadata)
+	err = s.dao.Update(entity)
+	if err != nil {
+		return nil, err
+	}
+	return entity, nil
+
 }

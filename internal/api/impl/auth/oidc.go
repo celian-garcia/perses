@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/securecookie"
 	"github.com/labstack/echo/v4"
+	"github.com/perses/perses/internal/api/interface/v1/user"
 	"github.com/perses/perses/internal/api/shared"
 	"github.com/perses/perses/internal/api/shared/crypto"
 	"github.com/perses/perses/internal/api/shared/route"
@@ -72,7 +73,7 @@ type oIDCEndpoint struct {
 	svc             service
 }
 
-func newOIDCEndpoint(provider config.OIDCProvider, jwt crypto.JWT) (route.Endpoint, error) {
+func newOIDCEndpoint(provider config.OIDCProvider, jwt crypto.JWT, dao user.DAO) (route.Endpoint, error) {
 	issuer := provider.Issuer.String()
 	redirectURI := provider.RedirectURI.String()
 	// As the cookie is used only at login time, we don't need a persistent value here.
@@ -112,7 +113,7 @@ func newOIDCEndpoint(provider config.OIDCProvider, jwt crypto.JWT) (route.Endpoi
 		slugID:          provider.SlugID,
 		urlParams:       provider.URLParams,
 		issuer:          issuer,
-		svc:             service{},
+		svc:             service{dao: dao},
 	}, nil
 }
 
